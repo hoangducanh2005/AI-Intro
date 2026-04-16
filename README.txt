@@ -1,0 +1,1 @@
+Mọi người đừng push thẳng lên main nhé
