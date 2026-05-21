@@ -14,17 +14,19 @@ y = df["Outcome"]
 X_train, X_test, y_train, y_test = train_test_split(
     X,
     y,
-    test_size=0.2,
+    test_size=0.2, # 20% test, 80% train
     random_state=42
 )
 
-# tạo scaler
-scaler = StandardScaler()
+# Test train + test
+# print(X_train.shape)  # trả về số dòng (samples) + số cột (feature)
+# print(X_test.shape)
 
+# Bắt đầu Standard Scaler
+scaler = StandardScaler()
 # scale train
 X_train_scaled = scaler.fit_transform(X_train)
-
-# scale test
+# scale test CHỈ transform, KHÔNG fit tránh leakage
 X_test_scaled = scaler.transform(X_test)
 
 print(X_train_scaled[:5])
