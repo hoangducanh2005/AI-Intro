@@ -44,3 +44,20 @@ for column, count in unique_value_counts.items():
         count
     )
     print(f"{column}: {colored_count_str} unique values")
+
+# Calculate the IQR for each column
+Q1 = df.quantile(0.25)
+Q3 = df.quantile(0.75)
+IQR = Q3 - Q1
+
+# Define the outlier detection threshold factor
+outlier_threshold_factor = 1.5
+
+# Detect outliers using the IQR method
+outliers = ((df < (Q1 - outlier_threshold_factor * IQR)) | (df > (Q3 + outlier_threshold_factor * IQR)))
+
+# Display columns with outliers
+columns_with_outliers = outliers.any()
+print("\033[38;2;238;18;137m"+"Columns with outliers:"+"\033[0m")
+def prGreen(skk): print("\033[92m {}\033[00m" .format(skk))
+prGreen(columns_with_outliers)
