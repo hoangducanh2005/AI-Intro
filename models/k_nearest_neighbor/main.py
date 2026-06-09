@@ -71,7 +71,3 @@ print(color_code + "Shape of the modeified df = " +str(df_no_outliers.shape)+ re
 
 df = df[~outliers.any(axis=1)]
 
-#Boxplot of dataset after removing outliers
-plt.figure(figsize = (20, 6))
-sns.boxplot(data = df, width = 0.8)
-plt.show()
