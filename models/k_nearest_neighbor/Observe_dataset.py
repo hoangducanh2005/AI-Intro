@@ -42,3 +42,40 @@ columns_with_outliers = outliers.any()
 print("\033[38;2;238;18;137m"+"Columns with outliers:"+"\033[0m")
 def prGreen(skk): print("\033[92m {}\033[00m" .format(skk))
 prGreen(columns_with_outliers)
+
+#outliers
+plt.figure(figsize = (20, 6))
+sns.boxplot(data = df, width = 0.8)
+plt.show()
+
+# Pairplot to visualize relationships between numerical features
+sns.pairplot(df, hue='Outcome', diag_kind='kde')
+plt.suptitle('Pairplot of Diabetes Data', y=1.02)
+plt.show()
+
+# Correlation heatmap
+correlation_matrix = df.corr()
+plt.figure(figsize=(10, 8))
+sns.heatmap(correlation_matrix, annot=True, cmap='coolwarm')
+plt.title("Correlation Heatmap")
+plt.show()
+
+----
+Data visualization
+----
+
+# Remove rows with outliers
+df_no_outliers = df[~outliers.any(axis=1)]
+
+# Display the modified DataFrame
+color_code , reset_code = "\033[38;2;238;18;137m"  , "\033[0m"
+print(color_code + "Shape of the modeified df = " +str(df_no_outliers.shape)+ reset_code)
+
+df = df[~outliers.any(axis=1)]
+
+
+-----
+#Boxplot of dataset after removing outliers
+plt.figure(figsize = (20, 6))
+sns.boxplot(data = df, width = 0.8)
+plt.show()
