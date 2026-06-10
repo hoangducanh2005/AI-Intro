@@ -1,9 +1,11 @@
+from pathlib import Path
 import numpy as np
 import pandas as pd
 import streamlit as st
 
 from models.knn.src.preprocess import FEATURE_COLUMNS
 from models.knn.src.train import train_knn_model
+from models.naive_bayes.src.train import train_naive_bayes_model
 
 
 st.set_page_config(page_title="Diabetes Prediction", layout="wide")
@@ -12,6 +14,22 @@ st.set_page_config(page_title="Diabetes Prediction", layout="wide")
 @st.cache_resource
 def get_knn_result(tune_k, k):
     return train_knn_model(k=k, tune_k=tune_k)
+
+
+@st.cache_resource
+def get_nb_result():
+    return train_naive_bayes_model()
+
+
+def get_relative_path(path_str):
+    if not path_str:
+        return ""
+    try:
+        path = Path(path_str).resolve()
+        root = Path(__file__).resolve().parent
+        return str(path.relative_to(root))
+    except Exception:
+        return str(path_str)
 
 
 def predict_patient(result, input_values):
@@ -37,16 +55,20 @@ tune_k = st.sidebar.checkbox("Auto tune k", value=True)
 k_value = st.sidebar.slider("K value", min_value=1, max_value=25, value=5, step=2, disabled=tune_k)
 
 knn_result = get_knn_result(tune_k, None if tune_k else k_value)
+nb_result = get_nb_result()
 
 if page == "Home":
     st.header("Welcome to Diabetes Prediction System")
     st.write(
         """
-        This application uses a K-Nearest Neighbors model to predict diabetes risk
-        from patient health metrics.
-
-        The model is trained from `dataset/diabetes.csv`, uses a train/test split,
-        tunes k with cross-validation on the training set, and standardizes features.
+        This application uses two Machine Learning algorithms to predict diabetes risk
+        from patient health metrics:
+        
+        1. **K-Nearest Neighbors (KNN)**: An instance-based classifier.
+        2. **Naive Bayes**: A probabilistic classifier based on Bayes' theorem.
+        
+        Both models are trained on the `dataset/diabetes.csv` dataset, using standard preprocessing and scaling. 
+        Use the sidebar to navigate to the prediction page or inspect the detailed performance comparison.
         """
     )
     st.info("Use the sidebar to make a prediction or inspect model performance.")
@@ -90,19 +112,28 @@ elif page == "Make Prediction":
             ]
         )
 
-        prediction, positive_probability = predict_patient(knn_result, input_values)
-        confidence = positive_probability if prediction == 1 else 1 - positive_probability
+        st.markdown("### Prediction Comparison")
+        knn_col, nb_col = st.columns(2)
 
-        result_col, confidence_col = st.columns(2)
-
-        with result_col:
-            if prediction == 1:
-                st.error("Prediction: Positive")
+        with knn_col:
+            st.subheader("K-Nearest Neighbors (KNN)")
+            knn_pred, knn_prob = predict_patient(knn_result, input_values)
+            knn_conf = knn_prob if knn_pred == 1 else 1 - knn_prob
+            if knn_pred == 1:
+                st.error("Prediction: Positive (Diabetes)")
             else:
-                st.success("Prediction: Negative")
+                st.success("Prediction: Negative (Normal)")
+            st.metric("Confidence", f"{knn_conf * 100:.1f}%")
 
-        with confidence_col:
-            st.metric("Confidence", f"{confidence * 100:.1f}%")
+        with nb_col:
+            st.subheader("Naive Bayes")
+            nb_pred, nb_prob = predict_patient(nb_result, input_values)
+            nb_conf = nb_prob if nb_pred == 1 else 1 - nb_prob
+            if nb_pred == 1:
+                st.error("Prediction: Positive (Diabetes)")
+            else:
+                st.success("Prediction: Negative (Normal)")
+            st.metric("Confidence", f"{nb_conf * 100:.1f}%")
 
         st.markdown("---")
         st.info("This prediction is for study/demo purposes and is not a medical diagnosis.")
@@ -113,42 +144,64 @@ elif page == "Model Performance":
     metrics_df = pd.DataFrame(
         [
             {
-                "Model": "All features baseline",
+                "Model": f"KNN (All features, k={knn_result['baseline_k']})",
                 **{name: round(value, 4) for name, value in knn_result["baseline_test_metrics"].items()},
             },
             {
-                "Model": "Selected features",
+                "Model": f"KNN (Selected features, k={knn_result['k']})",
                 **{name: round(value, 4) for name, value in knn_result["test_metrics"].items()},
+            },
+            {
+                "Model": "Naive Bayes (All features)",
+                **{name: round(value, 4) for name, value in nb_result["test_metrics"].items()},
             },
         ]
     )
 
-    st.subheader(f"K-Nearest Neighbors Performance (k={knn_result['k']})")
+    st.subheader("Model Performance Comparison")
     st.dataframe(metrics_df, use_container_width=True)
-
-    deltas_df = pd.DataFrame(
-        [
-            {
-                "Metric": metric,
-                "Delta vs baseline": round(value, 4),
-            }
-            for metric, value in knn_result["metric_deltas"].items()
-        ]
-    )
-    st.subheader("Selected Feature Impact")
-    st.dataframe(deltas_df, use_container_width=True)
 
     st.subheader("Metric Comparison")
     chart_data = metrics_df.set_index("Model")
     st.bar_chart(chart_data)
 
-    st.subheader("Selected Features")
-    st.write(", ".join(knn_result["feature_columns"]))
+    st.subheader("Visual Model Evaluations")
+    
+    tab1, tab2 = st.tabs(["Confusion Matrices", "Decision Boundaries"])
+    
+    with tab1:
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown(f"##### KNN (k={knn_result['k']})")
+            st.image(get_relative_path(knn_result["confusion_matrix_plot_path"]), use_column_width=True)
+        with col2:
+            st.markdown("##### Naive Bayes")
+            st.image(get_relative_path(nb_result["confusion_matrix_plot_path"]), use_column_width=True)
+            
+    with tab2:
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown(f"##### KNN (k={knn_result['k']})")
+            st.image(get_relative_path(knn_result["decision_boundary_plot_path"]), use_column_width=True)
+        with col2:
+            st.markdown("##### Naive Bayes")
+            st.image(get_relative_path(nb_result["decision_boundary_plot_path"]), use_column_width=True)
 
-    st.caption(f"Saved model: {knn_result['model_path']}")
-    st.caption(f"CV plot: {knn_result['cv_plot_path']}")
-    st.caption(f"Correlation plot: {knn_result['correlation_plot_path']}")
-    st.caption(f"Confusion matrix plot: {knn_result['confusion_matrix_plot_path']}")
-    st.caption(f"Decision boundary plot: {knn_result['decision_boundary_plot_path']}")
-    st.caption(f"Selected features file: {knn_result['selected_features_path']}")
-    st.caption(f"Training log: {knn_result['log_path']}")
+    st.markdown("---")
+    st.subheader("Artifact Locations")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("**KNN Artifacts:**")
+        st.caption(f"Saved model: {knn_result['model_path']}")
+        st.caption(f"CV plot: {knn_result['cv_plot_path']}")
+        st.caption(f"Correlation plot: {knn_result['correlation_plot_path']}")
+        st.caption(f"Confusion matrix plot: {knn_result['confusion_matrix_plot_path']}")
+        st.caption(f"Decision boundary plot: {knn_result['decision_boundary_plot_path']}")
+        st.caption(f"Selected features file: {knn_result['selected_features_path']}")
+        st.caption(f"Training log: {knn_result['log_path']}")
+    with col2:
+        st.markdown("**Naive Bayes Artifacts:**")
+        st.caption(f"Saved model: {nb_result['model_path']}")
+        st.caption(f"Confusion matrix plot: {nb_result['confusion_matrix_plot_path']}")
+        st.caption(f"Decision boundary plot: {nb_result['decision_boundary_plot_path']}")
+        st.caption(f"Training log: {nb_result['log_path']}")

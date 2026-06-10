@@ -26,6 +26,14 @@ def load_diabetes_data(dataset_path=DEFAULT_DATASET_PATH):
         missing = ", ".join(sorted(missing_columns))
         raise ValueError(f"Dataset is missing required columns: {missing}")
 
+    # Xử lý các giá trị 0 không hợp lệ (Missing values) thành Median (Trung vị)
+    invalid_zero_cols = ["Glucose", "BloodPressure", "SkinThickness", "Insulin", "BMI"]
+    for col in invalid_zero_cols:
+        if col in df.columns:
+            # Tính trung vị trên những mẫu có giá trị khác 0
+            median_val = df.loc[df[col] != 0, col].median()
+            df[col] = df[col].replace(0, median_val)
+
     X = df[FEATURE_COLUMNS]
     y = df[TARGET_COLUMN]
     return X, y

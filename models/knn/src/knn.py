@@ -29,31 +29,35 @@ class KNNClassifier:
     def predict(self, X):
         self._check_is_fitted()
         X_array = np.asarray(X, dtype=float)
-        return np.array([self._predict_one(row) for row in X_array])
+        
+        # Vectorized distance calculation
+        # Shape: (M, N) where M = len(X_array), N = len(self.X_train)
+        distances = np.sqrt(np.sum((X_array[:, np.newaxis, :] - self.X_train[np.newaxis, :, :]) ** 2, axis=2))
+        neighbor_indices = np.argsort(distances, axis=1)[:, :self.k]
+        neighbor_labels = self.y_train[neighbor_indices]  # Shape: (M, k)
+        
+        # Majority vote for each prediction
+        predictions = []
+        for row in neighbor_labels:
+            values, counts = np.unique(row, return_counts=True)
+            max_count = counts.max()
+            tied_values = values[counts == max_count]
+            predictions.append(tied_values.min())
+        return np.array(predictions)
 
     def predict_proba(self, X):
         self._check_is_fitted()
         X_array = np.asarray(X, dtype=float)
-        return np.array([self._predict_proba_one(row) for row in X_array])
-
-    def _predict_one(self, row):
-        neighbor_labels = self._nearest_neighbor_labels(row)
-        values, counts = np.unique(neighbor_labels, return_counts=True)
-        max_count = counts.max()
-        tied_values = values[counts == max_count]
-        return tied_values.min()
-
-    def _predict_proba_one(self, row):
-        neighbor_labels = self._nearest_neighbor_labels(row)
-        probabilities = []
+        
+        # Vectorized distance calculation
+        distances = np.sqrt(np.sum((X_array[:, np.newaxis, :] - self.X_train[np.newaxis, :, :]) ** 2, axis=2))
+        neighbor_indices = np.argsort(distances, axis=1)[:, :self.k]
+        neighbor_labels = self.y_train[neighbor_indices]  # Shape: (M, k)
+        
+        probs = []
         for class_value in self.classes_:
-            probabilities.append(np.mean(neighbor_labels == class_value))
-        return np.array(probabilities)
-
-    def _nearest_neighbor_labels(self, row):
-        distances = np.sqrt(np.sum((self.X_train - row) ** 2, axis=1))
-        neighbor_indices = np.argsort(distances)[: self.k]
-        return self.y_train[neighbor_indices]
+            probs.append(np.mean(neighbor_labels == class_value, axis=1))
+        return np.column_stack(probs)
 
     def _check_is_fitted(self):
         if self.X_train is None or self.y_train is None:

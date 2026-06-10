@@ -16,30 +16,49 @@ def tune_k_with_cross_validation(X, y, k_range, cv=5, random_state=42):
     y_array = np.asarray(y)
     splitter = StratifiedKFold(n_splits=cv, shuffle=True, random_state=random_state)
 
+    # Pre-split, scale, and calculate sorted neighbors once per fold (extremely fast!)
+    folds_neighbors = []
+    for train_indices, valid_indices in splitter.split(X_array, y_array):
+        X_train_fold = X_array[train_indices]
+        X_valid_fold = X_array[valid_indices]
+        y_train_fold = y_array[train_indices]
+        y_valid_fold = y_array[valid_indices]
+
+        scaler = StandardScaler()
+        X_train_fold_scaled = scaler.fit_transform(X_train_fold)
+        X_valid_fold_scaled = scaler.transform(X_valid_fold)
+
+        # Vectorized distance calculation to self.X_train_fold_scaled
+        distances = np.sqrt(np.sum((X_valid_fold_scaled[:, np.newaxis, :] - X_train_fold_scaled[np.newaxis, :, :]) ** 2, axis=2))
+        sorted_indices = np.argsort(distances, axis=1)
+        neighbor_labels = y_train_fold[sorted_indices]  # Shape: (M_val, N_train)
+        
+        folds_neighbors.append((neighbor_labels, y_valid_fold))
+
     cv_scores = []
-    for k in k_range:
+    k_list = list(k_range)
+    for k in k_list:
         fold_scores = []
-        for train_indices, valid_indices in splitter.split(X_array, y_array):
-            X_train_fold = X_array[train_indices]
-            X_valid_fold = X_array[valid_indices]
-            y_train_fold = y_array[train_indices]
-            y_valid_fold = y_array[valid_indices]
-
-            scaler = StandardScaler()
-            X_train_fold_scaled = scaler.fit_transform(X_train_fold)
-            X_valid_fold_scaled = scaler.transform(X_valid_fold)
-
-            model = KNNClassifier(k=k)
-            model.fit(X_train_fold_scaled, y_train_fold)
-            y_pred = model.predict(X_valid_fold_scaled)
-            fold_scores.append(accuracy_score(y_valid_fold, y_pred))
+        for neighbor_labels, y_valid_fold in folds_neighbors:
+            # Get the labels for the k nearest neighbors
+            k_labels = neighbor_labels[:, :k]  # Shape: (M_val, k)
+            
+            # Majority voting
+            predictions = []
+            for row in k_labels:
+                values, counts = np.unique(row, return_counts=True)
+                max_count = counts.max()
+                tied_values = values[counts == max_count]
+                predictions.append(tied_values.min())
+            
+            fold_scores.append(accuracy_score(y_valid_fold, np.array(predictions)))
 
         cv_scores.append(float(np.mean(fold_scores)))
 
     best_index = int(np.argmax(cv_scores))
     return {
-        "best_k": list(k_range)[best_index],
-        "k_values": list(k_range),
+        "best_k": k_list[best_index],
+        "k_values": k_list,
         "cv_scores": cv_scores,
     }
 
