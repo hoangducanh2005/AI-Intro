@@ -1,73 +1,48 @@
-import warnings
-warnings.filterwarnings("ignore", message="A NumPy version.*")
-warnings.filterwarnings("ignore", message="The figure layout.*")
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score
-from sklearn import neighbors
-from sklearn.neighbors import KNeighborsClassifier
-from IPython.display import HTML
-from sklearn.metrics import confusion_matrix
-from sklearn.metrics import classification_report
-from sklearn.model_selection import GridSearchCV
-from yellowbrick.classifier import ROCAUC
-from matplotlib.colors import ListedColormap
-sns.color_palette("Paired")
-sns.set_style("whitegrid")
+import sys
+from pathlib import Path
 
-# Load the dataset
-df = pd.read_csv('../../dataset/diabetes.csv')
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
 
-# Check the shape of the DataFrame
-shape = df.shape
-color_hex = "#1f78b4"
-colored_shape_str = "\033[38;2;{};{};{}m{}x{}\033[0m".format(
-    int(color_hex[1:3], 16),
-    int(color_hex[3:5], 16),
-    int(color_hex[5:], 16),
-    shape[0],
-    shape[1]
-)
-print("DataFrame shape:", colored_shape_str)
+from models.k_nearest_neighbor.train import train_knn_model
 
-# Calculate the number of unique values in each column
-unique_value_counts = df.nunique()
+def main():
+    result = train_knn_model(tune_k=True, k_range=range(1, 30), verbose=True)
 
-for column, count in unique_value_counts.items():
-    colored_count_str = "\033[38;2;{};{};{}m{}\033[0m".format(
-        int(color_hex[1:3], 16),
-        int(color_hex[3:5], 16),
-        int(color_hex[5:], 16),
-        count
-    )
-    print(f"{column}: {colored_count_str} unique values")
+    print("KNN diabetes prediction results (k_nearest_neighbor)")
+    print("-----------------------------------------------------")
+    print(f"Selected-feature best k: {result['k']}")
+    print(f"Selected features: {', '.join(result['feature_columns'])}")
 
-# Calculate the IQR for each column
-Q1 = df.quantile(0.25)
-Q3 = df.quantile(0.75)
-IQR = Q3 - Q1
+    print("\nBaseline test metrics (all features)")
+    for metric, value in result["baseline_test_metrics"].items():
+        print(f"{metric}: {value:.4f}")
 
-# Define the outlier detection threshold factor
-outlier_threshold_factor = 1.5
+    print("\nSelected-feature test metrics")
+    for metric, value in result["test_metrics"].items():
+        print(f"{metric}: {value:.4f}")
 
-# Detect outliers using the IQR method
-outliers = ((df < (Q1 - outlier_threshold_factor * IQR)) | (df > (Q3 + outlier_threshold_factor * IQR)))
+    print("\nMetric deltas vs baseline")
+    for metric, value in result["metric_deltas"].items():
+        print(f"{metric}: {value:+.4f}")
 
-# Display columns with outliers
-columns_with_outliers = outliers.any()
-print("\033[38;2;238;18;137m"+"Columns with outliers:"+"\033[0m")
-def prGreen(skk): print("\033[92m {}\033[00m" .format(skk))
-prGreen(columns_with_outliers)
+    print("\nConfusion matrix")
+    for row in result["classification_details"]["confusion_matrix"]:
+        print(row)
 
-# Remove rows with outliers
-df_no_outliers = df[~outliers.any(axis=1)]
+    print("\nClassification Report:")
+    print(result["classification_details"]["classification_report_text"])
 
-# Display the modified DataFrame
-color_code , reset_code = "\033[38;2;238;18;137m"  , "\033[0m"
-print(color_code + "Shape of the modeified df = " +str(df_no_outliers.shape)+ reset_code)
+    print(f"\nSaved model: {result['model_path']}")
+    print(f"CV plot: {result['cv_plot_path']}")
+    print(f"Correlation plot: {result['correlation_plot_path']}")
+    print(f"Confusion matrix plot: {result['confusion_matrix_plot_path']}")
+    print(f"Decision boundary plot: {result['decision_boundary_plot_path']}")
+    print(f"Selected features: {result['selected_features_path']}")
+    print(f"Training log: {result['log_path']}")
 
-df = df[~outliers.any(axis=1)]
-
+if __name__ == "__main__":
+    main()

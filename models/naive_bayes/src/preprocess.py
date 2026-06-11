@@ -3,6 +3,7 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 
+<<<<<<< HEAD
 FEATURE_COLUMNS = [
     "Pregnancies",
     "Glucose",
@@ -14,6 +15,17 @@ FEATURE_COLUMNS = [
     "Age",
 ]
 TARGET_COLUMN = "Outcome"
+=======
+# Nhập các cấu hình và hàm chuẩn bị dữ liệu từ KNN để đảm bảo đồng bộ hoàn toàn
+from models.k_nearest_neighbor.preprocess import (
+    DEFAULT_DATASET_PATH,
+    FEATURE_COLUMNS,
+    PROJECT_ROOT,
+    TARGET_COLUMN,
+    prepare_diabetes_data,
+)
+
+>>>>>>> 03078e0540f92d80d87fb25a6366ec62254cc503
 NAIVE_BAYES_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DATASET_PATH = Path(__file__).resolve().parents[3] / "dataset" / "diabetes.csv"
 

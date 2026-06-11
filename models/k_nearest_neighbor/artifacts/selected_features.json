@@ -1,12 +1,20 @@
 {
   "selected_features": [
     "Glucose",
+<<<<<<< HEAD
     "BloodPressure",
     "BMI",
     "Age"
   ],
   "best_k": 13,
   "best_cv_accuracy": 0.8501219512195122,
+=======
+    "DiabetesPedigreeFunction",
+    "Age"
+  ],
+  "best_k": 13,
+  "best_cv_accuracy": 0.80925,
+>>>>>>> 03078e0540f92d80d87fb25a6366ec62254cc503
   "candidate_features": [
     "Pregnancies",
     "Glucose",
@@ -17,16 +25,28 @@
     "DiabetesPedigreeFunction",
     "Age"
   ],
+<<<<<<< HEAD
   "evaluated_subset_count": 1,
+=======
+  "evaluated_subset_count": 450,
+>>>>>>> 03078e0540f92d80d87fb25a6366ec62254cc503
   "top_subsets": [
     {
       "features": [
         "Glucose",
+<<<<<<< HEAD
         "BloodPressure",
         "BMI",
         "Age"
       ],
       "best_k": 13
+=======
+        "DiabetesPedigreeFunction",
+        "Age"
+      ],
+      "best_k": 13,
+      "best_cv_accuracy": 0.80925
+>>>>>>> 03078e0540f92d80d87fb25a6366ec62254cc503
     }
   ],
   "feature_target_correlations": {
