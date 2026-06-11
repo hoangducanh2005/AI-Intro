@@ -13,8 +13,11 @@ class KNeighborsClassifier(BaseEstimator, ClassifierMixin):
     metric : str, default='euclidean'
         Distance metric to use. Supported metrics: 'euclidean', 'manhattan'.
     """
-    def __init__(self, n_neighbors=5, metric='euclidean'):
+    def __init__(self, n_neighbors=5, metric='euclidean', k=None):
+        if k is not None:
+            n_neighbors = k
         self.n_neighbors = n_neighbors
+        self.k = n_neighbors
         self.metric = metric
         self.X_train = None
         self.y_train = None

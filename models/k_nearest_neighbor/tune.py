@@ -1,76 +1,155 @@
-#FIND THE Best value of N
-import warnings
-warnings.filterwarnings("ignore", message="A NumPy version.*")
-warnings.filterwarnings("ignore", message="The figure layout.*")
-import pandas as pd
+import json
+from pathlib import Path
 import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
-from sklearn.model_selection import train_test_split
+import pandas as pd
 from sklearn.metrics import accuracy_score
-from sklearn import neighbors
-from sklearn.neighbors import KNeighborsClassifier
-from IPython.display import HTML
-from sklearn.metrics import confusion_matrix
-from sklearn.metrics import classification_report
-from sklearn.model_selection import GridSearchCV
-from yellowbrick.classifier import ROCAUC
-from matplotlib.colors import ListedColormap
-from IPython.display import display, HTML
-sns.color_palette("Paired")
-sns.set_style("whitegrid")
+from sklearn.model_selection import train_test_split
+from models.k_nearest_neighbor.knn import KNeighborsClassifier as KNNClassifier
+from models.k_nearest_neighbor.pso import BinaryPSOFeatureSelection
 
-# Load the dataset
-df = pd.read_csv('../../dataset/diabetes.csv')
+def tune_k_with_holdout(X_train_scaled, y_train, k_range=range(1, 30), test_size=0.2, random_state=42):
+    # Set seed for reproducibility
+    np.random.seed(random_state)
+    
+    # Split the scaled training set into sub-train and validation
+    X_train_sub, X_val, y_train_sub, y_val = train_test_split(
+        X_train_scaled,
+        y_train,
+        test_size=test_size,
+        random_state=random_state,
+    )
+    
+    k_list = list(k_range)
+    scores = []
+    
+    for k in k_list:
+        knn = KNNClassifier(k=k)
+        knn.fit(X_train_sub, y_train_sub)
+        y_pred_val = knn.predict(X_val)
+        accuracy = accuracy_score(y_val, y_pred_val)
+        scores.append(accuracy)
+        
+    best_index = int(np.argmax(scores))
+    return {
+        "best_k": k_list[best_index],
+        "k_values": k_list,
+        "cv_scores": scores,  # Named cv_scores to align with interface
+    }
 
-# Calculate the IQR for each column
-Q1 = df.quantile(0.25)
-Q3 = df.quantile(0.75)
-IQR = Q3 - Q1
+def select_features_with_pso(
+    X_train_scaled,
+    y_train,
+    feature_columns,
+    best_k,
+    num_particles=15,
+    max_iter=30,
+    random_state=42,
+):
+    # Set random seed to make the particle swarm optimization deterministic (seed=42)
+    np.random.seed(random_state)
+    
+    # Split training set into sub-train and validation
+    X_train_sub, X_val, y_train_sub, y_val = train_test_split(
+        X_train_scaled,
+        y_train,
+        test_size=0.2,
+        random_state=random_state,
+    )
+    
+    knn_model = KNNClassifier(k=best_k)
+    pso_selector = BinaryPSOFeatureSelection(
+        num_features=X_train_scaled.shape[1],
+        estimator=knn_model,
+        num_particles=num_particles,
+        max_iter=max_iter,
+        verbose=False
+    )
+    
+    # Run the PSO search
+    best_feature_mask, best_val_accuracy = pso_selector.fit(
+        X_train_sub, y_train_sub, X_val, y_val
+    )
+    
+    selected_feature_indices = np.where(best_feature_mask == 1)[0]
+    selected_features = [feature_columns[i] for i in selected_feature_indices]
+    
+    return {
+        "selected_features": selected_features,
+        "best_k": best_k,
+        "best_cv_accuracy": best_val_accuracy,
+        "candidate_features": feature_columns,
+        "evaluated_subset_count": max_iter * num_particles,
+        "top_subsets": [
+            {
+                "features": selected_features,
+                "best_k": best_k,
+                "best_cv_accuracy": best_val_accuracy
+            }
+        ]
+    }
 
-# Define the outlier detection threshold factor
-outlier_threshold_factor = 1.5
+def save_feature_selection_result(selection_result, output_path):
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", encoding="utf-8") as file:
+        json.dump(selection_result, file, indent=2)
+    return output_path
 
-# Detect outliers using the IQR method
-outliers = ((df < (Q1 - outlier_threshold_factor * IQR)) | (df > (Q3 + outlier_threshold_factor * IQR)))
+def save_cv_plot(k_values, cv_scores, output_path):
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
 
-# Remove rows with outliers
-df_no_outliers = df[~outliers.any(axis=1)]
-df = df[~outliers.any(axis=1)]
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
 
-#create numpy arrays for features and target
-X = df.drop('Outcome',axis=1).values
-y = df['Outcome'].values
+    plt.figure(figsize=(8, 5))
+    plt.plot(k_values, cv_scores, marker="o", color="deeppink")
+    plt.title("Accuracy vs. Number of Neighbors (n)")
+    plt.xlabel("Number of Neighbors (n)")
+    plt.ylabel("Accuracy")
+    plt.xticks(k_values)
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig(output_path)
+    plt.close()
+    return output_path
 
-# Split the dataset into training and testing sets
-X_train,X_test,y_train,y_test = train_test_split(X,y,test_size=0.3,random_state=666)
+def save_correlation_heatmap(df, output_path):
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
 
-# Splitting the training data into training and validation sets
-X_train_sub, X_val, y_train_sub, y_val = train_test_split(X_train, y_train, test_size=0.2, random_state=42)
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
 
-n_values = list(range(1, 30))
-accuracies = []
+    correlation = df.corr(numeric_only=True)
+    fig_width = max(8, len(correlation.columns) * 0.8)
+    fig_height = max(6, len(correlation.columns) * 0.7)
 
-for n in n_values:
-    knn = KNeighborsClassifier(n_neighbors=n)
-    knn.fit(X_train_sub, y_train_sub)
-    y_pred_val = knn.predict(X_val)
-    accuracy = accuracy_score(y_val, y_pred_val)
-    accuracies.append(accuracy)
+    plt.figure(figsize=(fig_width, fig_height))
+    image = plt.imshow(correlation, cmap="coolwarm", vmin=-1, vmax=1)
+    plt.colorbar(image, fraction=0.046, pad=0.04)
+    plt.xticks(range(len(correlation.columns)), correlation.columns, rotation=45, ha="right")
+    plt.yticks(range(len(correlation.columns)), correlation.columns)
+    plt.title("Feature Correlation Heatmap")
 
-best_n = n_values[np.argmax(accuracies)]
-colored_text = f'<span style="color: #1f78b4; font-weight: bold;">Best value of n: {best_n}</span>'
-display(HTML(colored_text))
+    for row_index in range(len(correlation.columns)):
+        for col_index in range(len(correlation.columns)):
+            value = correlation.iloc[row_index, col_index]
+            plt.text(col_index, row_index, f"{value:.2f}", ha="center", va="center", fontsize=8)
 
-plt.figure()
-plt.plot(n_values, accuracies, marker='o',color = "deeppink")
-plt.title("Accuracy vs. Number of Neighbors (n)")
-plt.xlabel("Number of Neighbors (n)")
-plt.ylabel("Accuracy")
-plt.xticks(n_values)
-plt.grid(True)
-plt.show()
+    plt.tight_layout()
+    plt.savefig(output_path)
+    plt.close()
+    return output_path
 
-long_text = ''' <span style="color: #1f78b4;"> In the context of applying the K-Nearest Neighbors (KNN) algorithm to our dataset, a thorough evaluation of various values of n (representing the number of nearest neighbors) has been conducted. This evaluation aimed to identify the optimal value that yields the most favorable results in terms of predictive accuracy and generalization. After careful analysis and experimentation, it has been observed that the value of n equal to 9 demonstrates superior performance for our specific dataset. This choice strikes a balance between incorporating sufficient local information from neighboring data points while avoiding overfitting. Therefore, based on our evaluations, we have determined that setting n to 9 optimally aligns with the characteristics of our dataset and contributes to achieving robust and reliable predictions. </span> '''
-
-display(HTML(long_text))
+def get_feature_target_correlations(df, target_column):
+    correlation = df.corr(numeric_only=True)
+    if target_column not in correlation.columns:
+        return {}
+    target_correlation = correlation[target_column].drop(labels=[target_column])
+    return {
+        feature: float(value)
+        for feature, value in target_correlation.sort_values(key=lambda series: series.abs(), ascending=False).items()
+    }

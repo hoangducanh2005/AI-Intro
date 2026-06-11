@@ -3,8 +3,8 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-from models.knn.src.preprocess import FEATURE_COLUMNS
-from models.knn.src.train import train_knn_model
+from models.k_nearest_neighbor.preprocess import FEATURE_COLUMNS
+from models.k_nearest_neighbor.train import train_knn_model
 from models.naive_bayes.src.train import train_naive_bayes_model
 
 

@@ -1,9 +1,7 @@
-from pathlib import Path
-
 import pandas as pd
+from pathlib import Path
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
-
 
 FEATURE_COLUMNS = [
     "Pregnancies",
@@ -16,10 +14,11 @@ FEATURE_COLUMNS = [
     "Age",
 ]
 TARGET_COLUMN = "Outcome"
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-KNN_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_DATASET_PATH = PROJECT_ROOT / "dataset" / "diabetes.csv"
 
+# Paths
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+KNN_ROOT = Path(__file__).resolve().parent
+DEFAULT_DATASET_PATH = PROJECT_ROOT / "dataset" / "diabetes.csv"
 
 def load_diabetes_data(dataset_path=DEFAULT_DATASET_PATH, feature_columns=None):
     if feature_columns is None:
@@ -31,31 +30,25 @@ def load_diabetes_data(dataset_path=DEFAULT_DATASET_PATH, feature_columns=None):
         missing = ", ".join(sorted(missing_columns))
         raise ValueError(f"Dataset is missing required columns: {missing}")
 
-    # Xử lý các giá trị 0 không hợp lệ (Missing values) thành Median (Trung vị)
-    invalid_zero_cols = ["Glucose", "BloodPressure", "SkinThickness", "Insulin", "BMI"]
-    for col in invalid_zero_cols:
-        if col in df.columns:
-            # Tính trung vị trên những mẫu có giá trị khác 0
-            median_val = df.loc[df[col] != 0, col].median()
-            df[col] = df[col].replace(0, median_val)
+    # Remove outliers using the IQR method (factor 1.5)
+    Q1 = df.quantile(0.25)
+    Q3 = df.quantile(0.75)
+    IQR = Q3 - Q1
+    outlier_threshold_factor = 1.5
+    outliers = ((df < (Q1 - outlier_threshold_factor * IQR)) | (df > (Q3 + outlier_threshold_factor * IQR)))
+    df = df[~outliers.any(axis=1)]
 
     X = df[feature_columns]
     y = df[TARGET_COLUMN]
     return X, y
 
-
-def split_data(X, y, test_size=0.2, random_state=42):
-    if test_size <= 0 or test_size >= 1:
-        raise ValueError("test_size must be greater than 0 and less than 1")
-
+def split_data(X, y, test_size=0.3, random_state=666):
     return train_test_split(
         X,
         y,
         test_size=test_size,
         random_state=random_state,
-        stratify=y,
     )
-
 
 def scale_data_splits(X_train, X_test):
     scaler = StandardScaler()
@@ -63,12 +56,11 @@ def scale_data_splits(X_train, X_test):
     X_test_scaled = scaler.transform(X_test)
     return X_train_scaled, X_test_scaled, scaler
 
-
 def prepare_diabetes_data(
     dataset_path=DEFAULT_DATASET_PATH,
     feature_columns=None,
-    test_size=0.2,
-    random_state=42,
+    test_size=0.3,
+    random_state=666,
 ):
     if feature_columns is None:
         feature_columns = FEATURE_COLUMNS

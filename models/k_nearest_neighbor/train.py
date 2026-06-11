@@ -2,52 +2,50 @@ import json
 import pickle
 from datetime import datetime
 from pathlib import Path
-
 import pandas as pd
 
-from models.knn.src.evaluate import (
-    evaluate_classification_details,
-    evaluate_predictions,
-    save_decision_boundary_plot,
-    save_confusion_matrix_plot,
-)
-from models.knn.src.knn import KNNClassifier
-from models.knn.src.preprocess import (
+from models.k_nearest_neighbor.knn import KNeighborsClassifier as KNNClassifier
+from models.k_nearest_neighbor.preprocess import (
     DEFAULT_DATASET_PATH,
     FEATURE_COLUMNS,
-    KNN_ROOT,
     TARGET_COLUMN,
+    KNN_ROOT,
     prepare_diabetes_data,
 )
-from models.knn.src.tune import (
-    get_feature_target_correlations,
-    save_correlation_heatmap,
-    save_cv_plot,
+from models.k_nearest_neighbor.tune import (
+    tune_k_with_holdout,
+    select_features_with_pso,
     save_feature_selection_result,
-    select_features_with_cross_validation,
-    tune_k_with_cross_validation,
+    save_cv_plot,
+    save_correlation_heatmap,
+    get_feature_target_correlations,
 )
-
+from models.k_nearest_neighbor.evaluate import (
+    evaluate_predictions,
+    evaluate_classification_details,
+    save_confusion_matrix_plot,
+    save_decision_boundary_plot,
+)
 
 DEFAULT_MODEL_DIR = KNN_ROOT / "artifacts"
 DEFAULT_LOG_DIR = KNN_ROOT / "logs"
 
-
 def train_knn_model(
     k=None,
     tune_k=True,
-    k_range=range(1, 31, 2),
-    cv=5,
+    k_range=range(1, 30),
+    cv=5,  # Parameter kept in signature for compatibility
     verbose=False,
     select_features=True,
     max_feature_candidates=8,
     max_feature_subset_size=4,
-    test_size=0.2,
-    random_state=42,
+    test_size=0.3,
+    random_state=666,
     dataset_path=DEFAULT_DATASET_PATH,
     model_dir=DEFAULT_MODEL_DIR,
     log_dir=DEFAULT_LOG_DIR,
 ):
+    # Prepare all features data
     all_feature_data = prepare_diabetes_data(
         dataset_path=dataset_path,
         feature_columns=FEATURE_COLUMNS,
@@ -63,6 +61,7 @@ def train_knn_model(
     cv_plot_path = None
     selected_k = k
 
+    # Compute correlation and save correlation plot
     dataset_df = pd.read_csv(dataset_path)
     correlation_plot_path = save_correlation_heatmap(
         dataset_df[FEATURE_COLUMNS + [TARGET_COLUMN]],
@@ -73,13 +72,14 @@ def train_knn_model(
         TARGET_COLUMN,
     )
 
+    # 1. Hyperparameter Tuning using Holdout Validation on scaled X_train
     if tune_k:
-        baseline_tuning_result = tune_k_with_cross_validation(
-            all_feature_data["X_train_raw"],
+        baseline_tuning_result = tune_k_with_holdout(
+            all_feature_data["X_train"],
             all_feature_data["y_train"],
             k_range=k_range,
-            cv=cv,
-            random_state=random_state,
+            test_size=0.2,
+            random_state=42,  # Split random state for tuning
         )
         cv_plot_path = save_cv_plot(
             baseline_tuning_result["k_values"],
@@ -87,28 +87,29 @@ def train_knn_model(
             Path(model_dir) / "knn_cv_accuracy.png",
         )
         if verbose:
-            print_cv_results(baseline_tuning_result)
+            print(f"Best k from tuning: {baseline_tuning_result['best_k']}")
         selected_k = baseline_tuning_result["best_k"]
 
     if selected_k is None:
         selected_k = 5
 
+    # Evaluate Baseline Model (All Features)
     baseline_model, baseline_test_metrics, baseline_pred = train_and_evaluate(
         all_feature_data,
         selected_k,
     )
 
+    # 2. PSO Feature Selection
     selected_features = FEATURE_COLUMNS
     if select_features:
-        feature_selection_result = select_features_with_cross_validation(
-            all_feature_data["X_train_raw"],
+        feature_selection_result = select_features_with_pso(
+            all_feature_data["X_train"],
             all_feature_data["y_train"],
             feature_columns=FEATURE_COLUMNS,
-            k_range=k_range,
-            cv=cv,
-            random_state=random_state,
-            max_candidate_features=max_feature_candidates,
-            max_subset_size=max_feature_subset_size,
+            best_k=selected_k,
+            num_particles=15,
+            max_iter=30,
+            random_state=42,
         )
         selected_features = feature_selection_result["selected_features"]
         selected_k = feature_selection_result["best_k"]
@@ -120,12 +121,15 @@ def train_knn_model(
             Path(model_dir) / "selected_features.json",
         )
 
+    # Prepare selected features dataset
     selected_data = prepare_diabetes_data(
         dataset_path=dataset_path,
         feature_columns=selected_features,
         test_size=test_size,
         random_state=random_state,
     )
+    
+    # Train and Evaluate Final Model (Selected Features)
     model, test_metrics, y_pred = train_and_evaluate(selected_data, selected_k)
     classification_details = evaluate_classification_details(
         selected_data["y_test"],
@@ -139,6 +143,8 @@ def train_knn_model(
         display_labels=["Class 0", "Class 1"],
         title=f"Confusion Matrix (k={selected_k})",
     )
+    
+    # Decision Boundary using first 2 selected features
     boundary_data = prepare_diabetes_data(
         dataset_path=dataset_path,
         feature_columns=selected_features[:2],
@@ -156,6 +162,7 @@ def train_knn_model(
         k=selected_k,
     )
 
+    # Save model and logger details
     model_path = save_trained_model(model, selected_data["scaler"], selected_data["feature_columns"], model_dir)
     log_path = log_training_result(
         log_dir=log_dir,
@@ -163,10 +170,7 @@ def train_knn_model(
             "k": selected_k,
             "tune_k": tune_k,
             "k_range": list(k_range),
-            "cv": cv,
             "select_features": select_features,
-            "max_feature_candidates": max_feature_candidates,
-            "max_feature_subset_size": max_feature_subset_size,
             "test_size": test_size,
             "random_state": random_state,
             "dataset_path": str(Path(dataset_path).resolve()),
@@ -199,7 +203,7 @@ def train_knn_model(
         "test_predictions": y_pred,
         "test_labels": selected_data["y_test"],
         "k": selected_k,
-        "baseline_k": baseline_tuning_result["best_k"] if baseline_tuning_result else k,
+        "baseline_k": baseline_tuning_result["best_k"] if baseline_tuning_result else selected_k,
         "tuning_result": baseline_tuning_result,
         "feature_selection_result": feature_selection_result,
         "feature_target_correlations": feature_target_correlations,
@@ -212,7 +216,6 @@ def train_knn_model(
         "log_path": log_path,
     }
 
-
 def train_and_evaluate(data, k):
     model = KNNClassifier(k=k)
     model.fit(data["X_train"], data["y_train"])
@@ -220,19 +223,11 @@ def train_and_evaluate(data, k):
     test_metrics = evaluate_predictions(data["y_test"], y_pred)
     return model, test_metrics, y_pred
 
-
 def calculate_metric_deltas(test_metrics, baseline_test_metrics):
     return {
         metric: test_metrics[metric] - baseline_test_metrics[metric]
         for metric in test_metrics
     }
-
-
-def print_cv_results(tuning_result):
-    for k, score in zip(tuning_result["k_values"], tuning_result["cv_scores"]):
-        print(f"k={k}: cv_accuracy={score:.4f}")
-    print(f"Best k from cross-validation: {tuning_result['best_k']}")
-
 
 def save_trained_model(model, scaler, feature_columns, model_dir):
     model_dir = Path(model_dir)
@@ -249,7 +244,6 @@ def save_trained_model(model, scaler, feature_columns, model_dir):
         pickle.dump(payload, file)
 
     return model_path
-
 
 def log_training_result(
     log_dir,

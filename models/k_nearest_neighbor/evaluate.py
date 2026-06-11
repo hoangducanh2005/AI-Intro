@@ -1,5 +1,4 @@
 from pathlib import Path
-
 from sklearn.metrics import (
     ConfusionMatrixDisplay,
     accuracy_score,
@@ -10,7 +9,6 @@ from sklearn.metrics import (
     recall_score,
 )
 
-
 def evaluate_predictions(y_true, y_pred):
     return {
         "Accuracy": accuracy_score(y_true, y_pred),
@@ -18,7 +16,6 @@ def evaluate_predictions(y_true, y_pred):
         "Recall": recall_score(y_true, y_pred, zero_division=0),
         "F1-Score": f1_score(y_true, y_pred, zero_division=0),
     }
-
 
 def evaluate_classification_details(y_true, y_pred, target_names=None):
     if target_names is None:
@@ -45,10 +42,8 @@ def evaluate_classification_details(y_true, y_pred, target_names=None):
         "classification_report_text": report_text,
     }
 
-
 def save_confusion_matrix_plot(y_true, y_pred, output_path, display_labels=None, title=None):
     import matplotlib
-
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
@@ -68,9 +63,7 @@ def save_confusion_matrix_plot(y_true, y_pred, output_path, display_labels=None,
     plt.tight_layout()
     plt.savefig(output_path)
     plt.close()
-
     return output_path
-
 
 def save_decision_boundary_plot(
     model,
@@ -81,7 +74,6 @@ def save_decision_boundary_plot(
     k,
 ):
     import matplotlib
-
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     import numpy as np
@@ -106,7 +98,6 @@ def save_decision_boundary_plot(
     plt.contourf(xx, yy, Z, cmap=plt.cm.coolwarm, alpha=0.3)
     try:
         import seaborn as sns
-
         sns.scatterplot(
             x=X_scaled[:, 0],
             y=X_scaled[:, 1],
@@ -130,5 +121,4 @@ def save_decision_boundary_plot(
     plt.tight_layout()
     plt.savefig(output_path)
     plt.close()
-
     return output_path
