@@ -1,3 +1,5 @@
+import json
+import pickle
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -7,18 +9,172 @@ from models.k_nearest_neighbor.preprocess import FEATURE_COLUMNS
 from models.k_nearest_neighbor.train import train_knn_model
 from models.naive_bayes.src.train import train_naive_bayes_model
 
+KNN_ARTIFACTS_DIR = Path("models/k_nearest_neighbor/artifacts")
+KNN_LOGS_DIR = Path("models/k_nearest_neighbor/logs")
+NB_ARTIFACTS_DIR = Path("models/naive_bayes/artifacts")
+NB_LOGS_DIR = Path("models/naive_bayes/logs")
 
 st.set_page_config(page_title="Diabetes Prediction", layout="wide")
 
 
 @st.cache_resource
 def get_knn_result(tune_k, k):
-    return train_knn_model(k=k, tune_k=tune_k)
+    model_path = KNN_ARTIFACTS_DIR / "knn_model.pkl"
+    log_path = KNN_LOGS_DIR / "training_results.jsonl"
+    
+    # Load model payload
+    with open(model_path, "rb") as f:
+        payload = pickle.load(f)
+    
+    # Load logs to get default/baseline parameters if needed
+    records = []
+    if log_path.exists():
+        with open(log_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    records.append(json.loads(line))
+                    
+    matched_record = None
+    for record in reversed(records):
+        log_params = record.get("params", {})
+        if log_params.get("tune_k") == tune_k:
+            if tune_k or log_params.get("k") == k:
+                matched_record = record
+                break
+                
+    if matched_record is None and records:
+        matched_record = records[-1]
+        
+    # Determine the target k
+    if k is not None:
+        target_k = k
+    elif matched_record:
+        target_k = matched_record["params"]["k"]
+    else:
+        target_k = 13  # Default fallback if no logs/parameters exist
+        
+    # Load test data and compute metrics dynamically to ensure they match target_k
+    from models.k_nearest_neighbor.preprocess import prepare_diabetes_data
+    from models.k_nearest_neighbor.evaluate import evaluate_predictions
+    
+    # Final model data (using selected features)
+    data = prepare_diabetes_data(
+        feature_columns=payload["feature_columns"],
+        test_size=0.3,
+        random_state=666,
+    )
+    
+    # Update loaded model's k and evaluate
+    model = payload["model"]
+    model.n_neighbors = target_k
+    model.k = target_k
+    y_pred = model.predict(data["X_test"])
+    test_metrics = evaluate_predictions(data["y_test"], y_pred)
+    
+    # Baseline model data (using all features)
+    all_feature_data = prepare_diabetes_data(
+        feature_columns=FEATURE_COLUMNS,
+        test_size=0.3,
+        random_state=666,
+    )
+    from models.k_nearest_neighbor.knn import KNeighborsClassifier
+    baseline_model = KNeighborsClassifier(k=target_k)
+    baseline_model.fit(all_feature_data["X_train"], all_feature_data["y_train"])
+    baseline_pred = baseline_model.predict(all_feature_data["X_test"])
+    baseline_test_metrics = evaluate_predictions(all_feature_data["y_test"], baseline_pred)
+    
+    # Paths for plots corresponding to this target_k
+    confusion_matrix_plot_path = KNN_ARTIFACTS_DIR / f"confusion_matrix_k{target_k}.png"
+    decision_boundary_plot_path = KNN_ARTIFACTS_DIR / f"decision_boundary_k{target_k}.png"
+    
+    # Generate and save plots if they don't exist
+    if not confusion_matrix_plot_path.exists():
+        from models.k_nearest_neighbor.evaluate import save_confusion_matrix_plot
+        save_confusion_matrix_plot(
+            data["y_test"],
+            y_pred,
+            confusion_matrix_plot_path,
+            title=f"Confusion Matrix (k={target_k})",
+        )
+        
+    if not decision_boundary_plot_path.exists():
+        from models.k_nearest_neighbor.evaluate import save_decision_boundary_plot
+        boundary_data = prepare_diabetes_data(
+            feature_columns=payload["feature_columns"][:2],
+            test_size=0.3,
+            random_state=666,
+        )
+        boundary_model = KNeighborsClassifier(k=target_k)
+        boundary_model.fit(boundary_data["X_train"], boundary_data["y_train"])
+        save_decision_boundary_plot(
+            boundary_model,
+            boundary_data["X_train"],
+            boundary_data["y_train"],
+            decision_boundary_plot_path,
+            feature_names=boundary_data["feature_columns"],
+            k=target_k,
+        )
+        
+    # Other standard paths
+    cv_plot_path = KNN_ARTIFACTS_DIR / "knn_cv_accuracy.png"
+    correlation_plot_path = KNN_ARTIFACTS_DIR / "feature_correlation_heatmap.png"
+    selected_features_path = KNN_ARTIFACTS_DIR / "selected_features.json"
+    
+    result = {
+        "model": model,
+        "scaler": payload["scaler"],
+        "feature_columns": payload["feature_columns"],
+        "class_labels": payload["class_labels"],
+        "k": target_k,
+        "baseline_k": matched_record["baseline_tuning_result"]["best_k"] if (matched_record and matched_record.get("baseline_tuning_result")) else target_k,
+        "test_metrics": test_metrics,
+        "baseline_test_metrics": baseline_test_metrics,
+        "confusion_matrix_plot_path": confusion_matrix_plot_path,
+        "decision_boundary_plot_path": decision_boundary_plot_path,
+        "cv_plot_path": cv_plot_path,
+        "correlation_plot_path": correlation_plot_path,
+        "selected_features_path": selected_features_path,
+        "model_path": model_path,
+        "log_path": log_path,
+    }
+    return result
 
 
 @st.cache_resource
 def get_nb_result():
-    return train_naive_bayes_model()
+    model_path = NB_ARTIFACTS_DIR / "nb_model.pkl"
+    log_path = NB_LOGS_DIR / "training_results.jsonl"
+    
+    # Load model payload
+    with open(model_path, "rb") as f:
+        payload = pickle.load(f)
+        
+    # Load logs
+    records = []
+    if log_path.exists():
+        with open(log_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    records.append(json.loads(line))
+                    
+    matched_record = records[-1] if records else None
+    
+    if matched_record:
+        return {
+            "model": payload["model"],
+            "scaler": payload["scaler"],
+            "feature_columns": payload["feature_columns"],
+            "class_labels": payload["class_labels"],
+            "test_metrics": matched_record["test_metrics"],
+            "confusion_matrix_plot_path": Path(matched_record["confusion_matrix_plot_path"]) if matched_record.get("confusion_matrix_plot_path") else NB_ARTIFACTS_DIR / "confusion_matrix.png",
+            "decision_boundary_plot_path": Path(matched_record["decision_boundary_plot_path"]) if matched_record.get("decision_boundary_plot_path") else NB_ARTIFACTS_DIR / "decision_boundary.png",
+            "model_path": model_path,
+            "log_path": log_path,
+        }
+    else:
+        return train_naive_bayes_model()
 
 
 def get_relative_path(path_str):
@@ -159,6 +315,7 @@ elif page == "Model Performance":
     )
 
     st.subheader("Model Performance Comparison")
+    st.markdown(f"**Các đặc trưng được PSO lựa chọn cho mô hình KNN:** {', '.join(knn_result['feature_columns'])}")
     st.dataframe(metrics_df, use_container_width=True)
 
     st.subheader("Metric Comparison")
@@ -198,6 +355,7 @@ elif page == "Model Performance":
         st.caption(f"Confusion matrix plot: {knn_result['confusion_matrix_plot_path']}")
         st.caption(f"Decision boundary plot: {knn_result['decision_boundary_plot_path']}")
         st.caption(f"Selected features file: {knn_result['selected_features_path']}")
+        st.caption(f"Selected features: {', '.join(knn_result['feature_columns'])}")
         st.caption(f"Training log: {knn_result['log_path']}")
     with col2:
         st.markdown("**Naive Bayes Artifacts:**")

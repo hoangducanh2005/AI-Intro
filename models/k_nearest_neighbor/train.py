@@ -30,6 +30,77 @@ from models.k_nearest_neighbor.evaluate import (
 DEFAULT_MODEL_DIR = KNN_ROOT / "artifacts"
 DEFAULT_LOG_DIR = KNN_ROOT / "logs"
 
+def load_cached_results(model_dir, log_dir, params):
+    model_dir = Path(model_dir)
+    log_dir = Path(log_dir)
+    model_path = model_dir / "knn_model.pkl"
+    selected_features_path = model_dir / "selected_features.json"
+    cv_plot_path = model_dir / "knn_cv_accuracy.png"
+    correlation_plot_path = model_dir / "feature_correlation_heatmap.png"
+    confusion_matrix_plot_path = model_dir / "confusion_matrix.png"
+    decision_boundary_plot_path = model_dir / "decision_boundary.png"
+    log_path = log_dir / "training_results.jsonl"
+    
+    required_files = [
+        model_path, selected_features_path, cv_plot_path,
+        correlation_plot_path, confusion_matrix_plot_path,
+        decision_boundary_plot_path, log_path
+    ]
+    if not all(f.exists() for f in required_files):
+        return None
+        
+    try:
+        last_record = None
+        with log_path.open("r", encoding="utf-8") as file:
+            for line in file:
+                line = line.strip()
+                if line:
+                    last_record = json.loads(line)
+        if not last_record:
+            return None
+            
+        log_params = last_record.get("params", {})
+        for key in ["tune_k", "test_size", "random_state"]:
+            if log_params.get(key) != params.get(key):
+                return None
+        if params.get("k") is not None and log_params.get("k") != params.get("k"):
+            return None
+            
+        with model_path.open("rb") as file:
+            payload = pickle.load(file)
+            
+        with selected_features_path.open("r", encoding="utf-8") as file:
+            feature_selection_result = json.load(file)
+            
+        return {
+            "model": payload["model"],
+            "scaler": payload["scaler"],
+            "metrics": last_record["test_metrics"],
+            "test_metrics": last_record["test_metrics"],
+            "baseline_test_metrics": last_record["baseline_test_metrics"],
+            "metric_deltas": last_record["metric_deltas"],
+            "classification_details": last_record["classification_details"],
+            "feature_columns": payload["feature_columns"],
+            "all_feature_columns": FEATURE_COLUMNS,
+            "class_labels": payload["class_labels"],
+            "test_predictions": [],
+            "test_labels": [],
+            "k": last_record["params"]["k"],
+            "baseline_k": last_record["baseline_tuning_result"]["best_k"] if last_record.get("baseline_tuning_result") else last_record["params"]["k"],
+            "tuning_result": last_record.get("baseline_tuning_result"),
+            "feature_selection_result": feature_selection_result,
+            "feature_target_correlations": feature_selection_result.get("feature_target_correlations", {}),
+            "selected_features_path": selected_features_path,
+            "correlation_plot_path": correlation_plot_path,
+            "confusion_matrix_plot_path": confusion_matrix_plot_path,
+            "decision_boundary_plot_path": decision_boundary_plot_path,
+            "cv_plot_path": cv_plot_path,
+            "model_path": model_path,
+            "log_path": log_path,
+        }
+    except Exception:
+        return None
+
 def train_knn_model(
     k=None,
     tune_k=True,
@@ -45,6 +116,19 @@ def train_knn_model(
     model_dir=DEFAULT_MODEL_DIR,
     log_dir=DEFAULT_LOG_DIR,
 ):
+    # Try loading cached results first
+    current_params = {
+        "k": k,
+        "tune_k": tune_k,
+        "test_size": test_size,
+        "random_state": random_state,
+    }
+    cached = load_cached_results(model_dir, log_dir, current_params)
+    if cached is not None:
+        if verbose:
+            print("Loaded results from pre-trained cache.")
+        return cached
+
     # Prepare all features data
     all_feature_data = prepare_diabetes_data(
         dataset_path=dataset_path,
@@ -99,27 +183,38 @@ def train_knn_model(
         selected_k,
     )
 
-    # 2. PSO Feature Selection
+    # 2. PSO Feature Selection (load from cache if available to skip slow search)
     selected_features = FEATURE_COLUMNS
     if select_features:
-        feature_selection_result = select_features_with_pso(
-            all_feature_data["X_train"],
-            all_feature_data["y_train"],
-            feature_columns=FEATURE_COLUMNS,
-            best_k=selected_k,
-            num_particles=15,
-            max_iter=30,
-            random_state=42,
-        )
-        selected_features = feature_selection_result["selected_features"]
-        selected_k = feature_selection_result["best_k"]
-        selected_features_path = save_feature_selection_result(
-            {
-                **feature_selection_result,
-                "feature_target_correlations": feature_target_correlations,
-            },
-            Path(model_dir) / "selected_features.json",
-        )
+        selected_features_path = Path(model_dir) / "selected_features.json"
+        if selected_features_path.exists():
+            try:
+                with selected_features_path.open("r", encoding="utf-8") as file:
+                    feature_selection_result = json.load(file)
+                selected_features = feature_selection_result["selected_features"]
+                if verbose:
+                    print(f"Loaded pre-computed PSO selected features: {selected_features}")
+            except Exception:
+                feature_selection_result = None
+
+        if feature_selection_result is None:
+            feature_selection_result = select_features_with_pso(
+                all_feature_data["X_train"],
+                all_feature_data["y_train"],
+                feature_columns=FEATURE_COLUMNS,
+                best_k=selected_k,
+                num_particles=15,
+                max_iter=30,
+                random_state=42,
+            )
+            selected_features = feature_selection_result["selected_features"]
+            selected_features_path = save_feature_selection_result(
+                {
+                    **feature_selection_result,
+                    "feature_target_correlations": feature_target_correlations,
+                },
+                Path(model_dir) / "selected_features.json",
+            )
 
     # Prepare selected features dataset
     selected_data = prepare_diabetes_data(

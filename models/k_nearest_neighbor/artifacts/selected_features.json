@@ -4,8 +4,8 @@
     "DiabetesPedigreeFunction",
     "Age"
   ],
-  "best_k": 13,
-  "best_cv_accuracy": 0.80925,
+  "best_k": 15,
+  "best_cv_accuracy": 0.7872499999999999,
   "candidate_features": [
     "Pregnancies",
     "Glucose",
@@ -24,8 +24,8 @@
         "DiabetesPedigreeFunction",
         "Age"
       ],
-      "best_k": 13,
-      "best_cv_accuracy": 0.80925
+      "best_k": 15,
+      "best_cv_accuracy": 0.7872499999999999
     }
   ],
   "feature_target_correlations": {
