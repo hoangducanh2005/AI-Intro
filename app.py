@@ -43,7 +43,7 @@ def evaluate_classification_details(y_true, y_pred, target_names=None):
     }
 
 
-def save_confusion_matrix_plot_local(y_true, y_pred, output_path, cmap="Blues", title="Confusion Matrix"):
+def save_confusion_matrix_plot_local(y_true, y_pred, output_path, cmap="Blues"):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -55,16 +55,16 @@ def save_confusion_matrix_plot_local(y_true, y_pred, output_path, cmap="Blues", 
     cm = confusion_matrix(y_true, y_pred)
     fig, ax = plt.subplots(figsize=(6, 6))
     disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=["Class 0", "Class 1"])
-    disp.plot(cmap=cmap, ax=ax)
-    ax.set_title(title)
+    # We set colorbar=False and no title to ensure perfect aspect ratio and layout symmetry.
+    disp.plot(cmap=cmap, ax=ax, colorbar=False)
     ax.grid(False)
-    fig.tight_layout()
-    fig.savefig(output_path)
+    fig.subplots_adjust(left=0.15, right=0.9, top=0.9, bottom=0.15)
+    fig.savefig(output_path, dpi=100)
     plt.close(fig)
     return output_path
 
 
-def save_decision_boundary_plot_local(model, X_scaled, y, output_path, feature_names, title="Decision Boundary"):
+def save_decision_boundary_plot_local(model, X_scaled, y, output_path, feature_names):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -109,12 +109,11 @@ def save_decision_boundary_plot_local(model, X_scaled, y, output_path, feature_n
         )
         ax.legend(*scatter.legend_elements(), title="Class")
         
-    ax.set_title(title)
     ax.set_xlabel(f"{feature_names[0]} (scaled)")
     ax.set_ylabel(f"{feature_names[1]} (scaled)")
     ax.grid(True)
-    fig.tight_layout()
-    fig.savefig(output_path)
+    fig.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.12)
+    fig.savefig(output_path, dpi=100)
     plt.close(fig)
     return output_path
 
@@ -137,13 +136,18 @@ def get_knn_result():
                 if line:
                     records.append(json.loads(line))
                     
-    matched_record = records[-1] if records else None
+    # Find matching record in logs for k=13 (newest first)
+    matched_record = None
+    for record in reversed(records):
+        if record.get("params", {}).get("k") == 13:
+            matched_record = record
+            break
+            
+    if matched_record is None and records:
+        matched_record = records[-1]
         
-    # Determine the target k
-    if matched_record:
-        target_k = matched_record["params"]["k"]
-    else:
-        target_k = 13  # Default fallback if no logs/parameters exist
+    # Determine the target k (always 13 since it is fixed now)
+    target_k = 13
         
     # Load test data and compute metrics dynamically to ensure they match target_k
     from models.k_nearest_neighbor.preprocess import prepare_diabetes_data
@@ -180,33 +184,28 @@ def get_knn_result():
     confusion_matrix_plot_path = KNN_ARTIFACTS_DIR / f"confusion_matrix_k{target_k}.png"
     decision_boundary_plot_path = KNN_ARTIFACTS_DIR / f"decision_boundary_k{target_k}.png"
     
-    # Generate and save plots if they don't exist
-    if not confusion_matrix_plot_path.exists():
-        from models.k_nearest_neighbor.evaluate import save_confusion_matrix_plot
-        save_confusion_matrix_plot(
-            data["y_test"],
-            y_pred,
-            confusion_matrix_plot_path,
-            title=f"Confusion Matrix (k={target_k})",
-        )
-        
-    if not decision_boundary_plot_path.exists():
-        from models.k_nearest_neighbor.evaluate import save_decision_boundary_plot
-        boundary_data = prepare_diabetes_data(
-            feature_columns=payload["feature_columns"][:2],
-            test_size=0.3,
-            random_state=666,
-        )
-        boundary_model = KNeighborsClassifier(k=target_k)
-        boundary_model.fit(boundary_data["X_train"], boundary_data["y_train"])
-        save_decision_boundary_plot(
-            boundary_model,
-            boundary_data["X_train"],
-            boundary_data["y_train"],
-            decision_boundary_plot_path,
-            feature_names=boundary_data["feature_columns"],
-            k=target_k,
-        )
+    # Generate and save plots dynamically using local unified plotting functions
+    save_confusion_matrix_plot_local(
+        data["y_test"],
+        y_pred,
+        confusion_matrix_plot_path,
+        cmap="Blues",
+    )
+    
+    boundary_data = prepare_diabetes_data(
+        feature_columns=payload["feature_columns"][:2],
+        test_size=0.3,
+        random_state=666,
+    )
+    boundary_model = KNeighborsClassifier(k=target_k)
+    boundary_model.fit(boundary_data["X_train"], boundary_data["y_train"])
+    save_decision_boundary_plot_local(
+        boundary_model,
+        boundary_data["X_train"],
+        boundary_data["y_train"],
+        decision_boundary_plot_path,
+        feature_names=boundary_data["feature_columns"],
+    )
         
     # Other standard paths
     cv_plot_path = KNN_ARTIFACTS_DIR / "knn_cv_accuracy.png"
@@ -253,20 +252,67 @@ def get_nb_result():
                     
     matched_record = records[-1] if records else None
     
-    if matched_record:
-        return {
-            "model": payload["model"],
-            "scaler": payload["scaler"],
-            "feature_columns": payload["feature_columns"],
-            "class_labels": payload["class_labels"],
-            "test_metrics": matched_record["test_metrics"],
-            "confusion_matrix_plot_path": Path(matched_record["confusion_matrix_plot_path"]) if matched_record.get("confusion_matrix_plot_path") else NB_ARTIFACTS_DIR / "confusion_matrix.png",
-            "decision_boundary_plot_path": Path(matched_record["decision_boundary_plot_path"]) if matched_record.get("decision_boundary_plot_path") else NB_ARTIFACTS_DIR / "decision_boundary.png",
-            "model_path": model_path,
-            "log_path": log_path,
-        }
-    else:
-        return train_naive_bayes_model()
+    if not matched_record:
+        # If no record exists, run training to generate it
+        train_results = train_naive_bayes_model()
+        if log_path.exists():
+            with open(log_path, "r", encoding="utf-8") as f:
+                records = [json.loads(line.strip()) for line in f if line.strip()]
+            matched_record = records[-1] if records else None
+            
+    # Load test data and compute metrics dynamically
+    from models.naive_bayes.src.preprocess import prepare_diabetes_data
+    from models.naive_bayes.src.evaluate import evaluate_predictions
+    
+    data = prepare_diabetes_data(
+        feature_columns=payload["feature_columns"],
+        test_size=0.2,
+        random_state=42,
+    )
+    
+    model = payload["model"]
+    y_pred = model.predict(data["X_test"])
+    test_metrics = evaluate_predictions(data["y_test"], y_pred)
+    
+    confusion_matrix_plot_path = NB_ARTIFACTS_DIR / "confusion_matrix.png"
+    decision_boundary_plot_path = NB_ARTIFACTS_DIR / "decision_boundary.png"
+    
+    # Generate and save plots dynamically using local unified plotting functions
+    save_confusion_matrix_plot_local(
+        data["y_test"],
+        y_pred,
+        confusion_matrix_plot_path,
+        cmap="Oranges",
+    )
+    
+    boundary_data = prepare_diabetes_data(
+        feature_columns=payload["feature_columns"][:2],
+        test_size=0.2,
+        random_state=42,
+    )
+    from models.naive_bayes.src.naive_bayes import NaiveBayesClassifier
+    boundary_model_fit = NaiveBayesClassifier()
+    boundary_model_fit.fit(boundary_data["X_train"], boundary_data["y_train"])
+    
+    save_decision_boundary_plot_local(
+        boundary_model_fit,
+        boundary_data["X_train"],
+        boundary_data["y_train"],
+        decision_boundary_plot_path,
+        feature_names=boundary_data["feature_columns"],
+    )
+    
+    return {
+        "model": model,
+        "scaler": payload["scaler"],
+        "feature_columns": payload["feature_columns"],
+        "class_labels": payload["class_labels"],
+        "test_metrics": test_metrics,
+        "confusion_matrix_plot_path": confusion_matrix_plot_path,
+        "decision_boundary_plot_path": decision_boundary_plot_path,
+        "model_path": model_path,
+        "log_path": log_path,
+    }
 
 
 def get_relative_path(path_str):
@@ -298,13 +344,19 @@ def predict_patient(result, input_values):
     ]
     input_df = pd.DataFrame([input_values], columns=all_features)
     
-    # Scale trên toàn bộ đặc trưng rồi lọc các đặc trưng được chọn
-    input_scaled = scaler.transform(input_df)
-    input_scaled_df = pd.DataFrame(input_scaled, columns=all_features)
-    input_pso = input_scaled_df[feature_cols].values
+    # Kiểm tra xem scaler được fit trên bao nhiêu đặc trưng để biến đổi chính xác
+    if hasattr(scaler, "n_features_in_") and scaler.n_features_in_ == len(feature_cols):
+        # Nếu scaler chỉ được fit trên các đặc trưng được chọn (như KNN)
+        input_subset = input_df[feature_cols]
+        input_scaled = scaler.transform(input_subset)
+    else:
+        # Nếu scaler được fit trên toàn bộ đặc trưng (như Naive Bayes)
+        input_scaled = scaler.transform(input_df)
+        input_scaled_df = pd.DataFrame(input_scaled, columns=all_features)
+        input_scaled = input_scaled_df[feature_cols].values
 
-    prediction = model.predict(input_pso)[0]
-    probabilities = model.predict_proba(input_pso)[0]
+    prediction = model.predict(input_scaled)[0]
+    probabilities = model.predict_proba(input_scaled)[0]
     positive_index = list(result["class_labels"]).index(1)
     positive_probability = probabilities[positive_index]
     return prediction, positive_probability

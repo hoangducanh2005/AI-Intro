@@ -56,13 +56,16 @@ def save_confusion_matrix_plot(y_true, y_pred, output_path, display_labels=None,
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     cm = confusion_matrix(y_true, y_pred)
+    
+    # Thread-safe object-oriented plotting with identical size to Naive Bayes
+    fig, ax = plt.subplots(figsize=(6, 6))
     disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=display_labels)
-    disp.plot(cmap="Blues")
-    plt.title(title)
-    plt.grid(False)
-    plt.tight_layout()
-    plt.savefig(output_path)
-    plt.close()
+    disp.plot(cmap="Blues", ax=ax)
+    ax.set_title(title)
+    ax.grid(False)
+    fig.tight_layout()
+    fig.savefig(output_path)
+    plt.close(fig)
     return output_path
 
 def save_decision_boundary_plot(
@@ -94,8 +97,10 @@ def save_decision_boundary_plot(
     Z = model.predict(np.c_[xx.ravel(), yy.ravel()])
     Z = Z.reshape(xx.shape)
 
-    plt.figure(figsize=(8, 6))
-    plt.contourf(xx, yy, Z, cmap=plt.cm.coolwarm, alpha=0.3)
+    # Thread-safe object-oriented plotting with identical size to Naive Bayes
+    fig, ax = plt.subplots(figsize=(8, 6))
+    ax.contourf(xx, yy, Z, cmap=plt.cm.coolwarm, alpha=0.3)
+    
     try:
         import seaborn as sns
         sns.scatterplot(
@@ -104,21 +109,23 @@ def save_decision_boundary_plot(
             hue=y,
             palette="Set1",
             edgecolor="k",
+            ax=ax,
         )
     except ModuleNotFoundError:
-        scatter = plt.scatter(
+        scatter = ax.scatter(
             X_scaled[:, 0],
             X_scaled[:, 1],
             c=y,
             cmap=plt.cm.Set1,
             edgecolors="k",
         )
-        plt.legend(*scatter.legend_elements(), title="Class")
-    plt.title(f"Decision Boundary with Best k = {k}")
-    plt.xlabel(f"{feature_names[0]} (scaled)")
-    plt.ylabel(f"{feature_names[1]} (scaled)")
-    plt.grid(True)
-    plt.tight_layout()
-    plt.savefig(output_path)
-    plt.close()
+        ax.legend(*scatter.legend_elements(), title="Class")
+        
+    ax.set_title(f"Decision Boundary with Best k = {k}")
+    ax.set_xlabel(f"{feature_names[0]} (scaled)")
+    ax.set_ylabel(f"{feature_names[1]} (scaled)")
+    ax.grid(True)
+    fig.tight_layout()
+    fig.savefig(output_path)
+    plt.close(fig)
     return output_path
