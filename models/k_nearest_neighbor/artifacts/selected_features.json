@@ -1,0 +1,42 @@
+{
+  "selected_features": [
+    "Glucose",
+    "BloodPressure",
+    "BMI",
+    "Age"
+  ],
+  "best_k": 13,
+  "best_cv_accuracy": 0.8501219512195122,
+  "candidate_features": [
+    "Pregnancies",
+    "Glucose",
+    "BloodPressure",
+    "SkinThickness",
+    "Insulin",
+    "BMI",
+    "DiabetesPedigreeFunction",
+    "Age"
+  ],
+  "evaluated_subset_count": 1,
+  "top_subsets": [
+    {
+      "features": [
+        "Glucose",
+        "BloodPressure",
+        "BMI",
+        "Age"
+      ],
+      "best_k": 13
+    }
+  ],
+  "feature_target_correlations": {
+    "Glucose": 0.46658139830687373,
+    "BMI": 0.2926946626444454,
+    "Age": 0.23835598302719757,
+    "Pregnancies": 0.22189815303398636,
+    "DiabetesPedigreeFunction": 0.17384406565296004,
+    "Insulin": 0.13054795488404794,
+    "SkinThickness": 0.07475223191831946,
+    "BloodPressure": 0.06506835955033277
+  }
+}
