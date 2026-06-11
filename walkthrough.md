@@ -26,10 +26,16 @@ The PSO selector consistently and deterministically selects **3 out of 8** featu
 
 | Metric | KNN (All 8 Features) | KNN + PSO (3 Selected Features) | Difference |
 | :--- | :---: | :---: | :---: |
-| **Test Accuracy** | 81.25% | **83.33%** | **+2.08%** |
-| **Class 1 (Diabetic) Precision** | **79%** | 78% | -1% |
-| **Class 1 (Diabetic) Recall** | 48% | **57%** | **+9%** |
-| **Class 1 (Diabetic) F1-Score** | 0.60 | **0.66** | **+0.06** |
+| **Test Accuracy** | 81.25% | **82.81%** | **+1.56%** |
+| **Class 1 Precision** | **79.41%** | 78.05% | -1.36% |
+| **Class 1 Recall** | 48.21% | **57.14%** | **+8.93%** |
+| **Class 1 F1-Score** | 0.6000 | **0.6598** | **+0.0598** |
+
+## UI Verification
+
+Below is the screenshot of the model performance dashboard in the Streamlit UI showing the corrected KNN with PSO metrics matching the Jupyter notebook:
+
+![Model Performance Comparison](file:///C:/Users/Admin/.gemini/antigravity-ide/brain/b2a6bb86-6fe0-4898-99b3-9c56d01e0a5f/knn_pso_metrics_1781169928410.png)
 
 > [!TIP]
-> By reducing the number of features from 8 to 3, the model's complexity is halved, and the generalization accuracy on the hidden test set increases from **81.25%** to **83.33%**. More importantly, the **recall** for detecting diabetic patients improved significantly from **48%** to **57%**.
+> By reducing the number of features from 8 to 3, the model's complexity is reduced, and the generalization accuracy on the test set increases from **81.25%** to **82.81%**. More importantly, the **recall** for detecting diabetic patients improved significantly from **48.21%** to **57.14%** and the F1-Score increased to **0.6598**.
