@@ -1,3 +1,4 @@
+from numpy._typing import _char_codes
 import numpy as np
 
 class BinaryPSOFeatureSelection:
@@ -15,7 +16,7 @@ class BinaryPSOFeatureSelection:
     max_iter : int, default=20
         Maximum number of iterations.
     w : float, default=0.9
-        Inertia weight.
+        Inertia weight. (he so quan tinh)
     c1 : float, default=2.0
         Cognitive coefficient.
     c2 : float, default=2.0
@@ -41,7 +42,7 @@ class BinaryPSOFeatureSelection:
         # Random binary choice: each feature has a 50% chance of being selected (1)
         self.X_pos = np.random.choice([0, 1], size=(self.num_particles, self.num_features))
         
-        # Ensure at least one feature is selected for each particle
+        # Ensure at least one feature is selected for each particle, elsem KNN can't train with ALL feature =0
         for i in range(self.num_particles):
             if np.sum(self.X_pos[i]) == 0:
                 self.X_pos[i, np.random.randint(self.num_features)] = 1
@@ -49,11 +50,13 @@ class BinaryPSOFeatureSelection:
         # Initialize velocities randomly in range [-4.0, 4.0]
         self.V = np.random.uniform(-4.0, 4.0, size=(self.num_particles, self.num_features))
         
-        # Personal best position and fitness
+        # Personal best position and fitness, initially, pbest_fitness = [0, 0, 0, ..., 0] 
+        # and pbest_pos = initial random positions
         self.pbest_pos = np.copy(self.X_pos)
         self.pbest_fitness = np.zeros(self.num_particles)
         
-        # Global best position and fitness
+        # Global best position and fitness, initially, gbest_fitness = -1 and gbest_pos = [0, 0, 0, ..., 0]
+        # Gán fitness là -1.0 để đảm bảo bất kỳ particle hợp lệ nào có fitness >= 0 cũng sẽ tốt hơn gbest ban đầu.
         self.gbest_pos = np.zeros(self.num_features)
         self.gbest_fitness = -1.0
 
@@ -103,6 +106,9 @@ class BinaryPSOFeatureSelection:
                     
                     # Fitness function with penalty for selected feature counts
                     # Fitness = alpha * Accuracy + (1 - alpha) * (1 - N_selected / N_total)
+                    # Ham muc tieu
+                    #Phần 1: accuracy
+                    #Phần 2: thưởng cho việc chọn ít feature hơn
                     fitness = self.alpha * acc + (1 - self.alpha) * (1 - len(selected_features) / self.num_features)
                 
                 # Update personal best
@@ -126,6 +132,8 @@ class BinaryPSOFeatureSelection:
                 self.V[i] = np.clip(self.V[i], -6.0, 6.0)
                 
                 # Sigmoid transfer function for binary selection
+                # x_new = 1 nếu random < sigmoid(v_new)
+                # x_new = 0 nếu random >= sigmoid(v_new)
                 probs = self._sigmoid(self.V[i])
                 rand_vals = np.random.rand(self.num_features)
                 self.X_pos[i] = np.where(rand_vals < probs, 1, 0)
