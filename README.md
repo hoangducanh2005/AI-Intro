@@ -14,7 +14,9 @@ A comprehensive machine learning system designed to predict diabetes risk from p
 2. **Feature Selection using Binary PSO**:
    - Implements a Binary Particle Swarm Optimization (BPSO) metaheuristic to find the optimal subset of input features.
    - Designed with a multi-objective Fitness Function:
-     $$\text{Fitness} = \alpha \cdot \text{Accuracy}_{\text{val}} + (1 - \alpha) \cdot \left(1 - \frac{N_{\text{selected}}}{N_{\text{total}}}\right)$$
+     $$
+     \text{Fitness} = \alpha \cdot \text{Accuracy}_{\text{val}} + (1 - \alpha) \cdot \left(1 - \frac{N_{\text{selected}}}{N_{\text{total}}}\right)
+     $$
      (where $\alpha = 0.99$ to prioritize diagnosis accuracy while encouraging feature pruning).
    - Successfully reduced feature space by **62.5%** (from 8 features to 3: *Glucose*, *DiabetesPedigreeFunction*, and *Age*).
 
